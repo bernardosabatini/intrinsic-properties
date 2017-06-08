@@ -1,44 +1,41 @@
-function [ output_args ] = ipRunAnalysis( input_args )
+function [ output_args ] = ipRunAnalysis( cellList )
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
     global ipTableNum ipTableTxt ipTableRaw ipTableSize
 
-    for rowCounter=2:ipTableSize % the first row has headers
+    if nargin<1 || isempty(cellList)
+        cellList=1:ipTableSize(2)-1
+    end
+
         
+    prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
+    
+    % column order assumptions
+    % 'Date' 'Animal' 'CellN' 'Epoch' 'EpochEnd' 'SweepStart' 'SweepEnd' 'ML' 'DV' 'Injection ' 'Notes'
 
-    evalin('base', 'global ipTableNum ipTableTxt ipTableRaw ipTableSize')
-
-    [filename,pathname,~] = uigetfile('*.*','Select excel file with annotations');
-    if isequal(filename,0)
-        disp('User selected Cancel')
-        return
-    else
-        disp(['User selected ', fullfile(pathname, filename)])
-        [ipTableNum, ipTableTxt, ipTableRaw] = xlsread(fullfile(pathname, filename));
+    for cellCounter=cellList % the first row has headers
+        rowCounter=cellCounter+1
+        fullpath=[prepath num2str(ipTableRaw{rowCounter,1}) '/WW_Gil'];
+        animalID=[ipTableRaw{rowCounter,2} '_' num2str(ipTableRaw{rowCounter,3})];
+        sStart=extractNum(ipTableRaw{rowCounter,6});
+        sEnd=extractNum(ipTableRaw{rowCounter,7});
+        for sCounter=sStart:sEnd
+            sFile=fullfile(fullpath, ['AD0_' num2str(sCounter) '.mat'])
+            a=load(sFile);
+            a.(['AD0_' num2str(sCounter)]).UserData.headerString
+        end
+        
     end
     
-    aa=cellfun(@isnan, ipTableRaw(1,:), 'un',0);
-    lastCol=find(cell2mat(cellfun(@all, aa, 'un',0)));
-    if isempty(lastCol)
-        lastCol=size(ipTableRaw,2);
+    
+    
+    
+function ns=extractNum(s)
+    si=strfind(s, '_');
+    if isempty(si)
+        ns=str2num(s);
     else
-        lastCol=lastCol(1)-1;
+       ns=str2num(s(si+1:end));
     end
     
-    aa=cellfun(@isnan, ipTableRaw(:,1), 'un',0);
-    lastRow=find(cell2mat(cellfun(@all, aa, 'un',0)));
-    if isempty(lastRow)
-        lastRow=size(ipTableRaw,1);
-    else
-        lastRow=lastRow(1)-1;
-    end   
-    disp([num2str(lastCol) ' columns of data loaded for ' ...
-        num2str(lastRow-1) ' cells'])
-    ipTableSize=[lastCol, lastRow];
-
-    
-    
-    
-    
-
