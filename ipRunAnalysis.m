@@ -73,7 +73,7 @@ for cellCounter=cellList
     newCell.Rm=nan(1, nAcq);
     newCell.Vstep=nan(1, nAcq);
     newCell.nAP=nan(1, nAcq);
-    %% run the acquisitions
+    %% run through the acquisitions
     
     for sCounter=1:nAcq
         acqNum=sCounter+sStart-1;
@@ -106,7 +106,7 @@ for cellCounter=cellList
         newCell.Rm(sCounter)=1000*...       % Rm in MOhm
             (checkPulseV-newCell.VrestMean(sCounter))/checkPulseSize;
         
-        
+        ipFindZeroXings(acqData)
         %
         %        %     mode((['AD0_' num2str(sCounter)]).data)
         % %             figure;
