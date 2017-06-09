@@ -106,7 +106,10 @@ for cellCounter=cellList
         newCell.Rm(sCounter)=1000*...       % Rm in MOhm
             (checkPulseV-newCell.VrestMean(sCounter))/checkPulseSize;
         
-        pulseAP=ipAnalyzeAP(SR(pulseStart, pulseEnd));
+        newCell.pulseAP{sCounter}=ipAnalyzeAP(SR(pulseStart, pulseEnd));
+        newCell.postAP{sCounter}=ipAnalyzeAP(SR(pulseEnd+1, floor(length(acqData)/acqRate)));
+        newCell.pulseAHP(sCounter)=min(SR(pulseEnd+1, floor(length(acqData)/acqRate)));
+        
         
         %
         %        %     mode((['AD0_' num2str(sCounter)]).data)
