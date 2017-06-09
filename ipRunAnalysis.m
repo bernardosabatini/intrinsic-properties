@@ -106,7 +106,8 @@ for cellCounter=cellList
         newCell.Rm(sCounter)=1000*...       % Rm in MOhm
             (checkPulseV-newCell.VrestMean(sCounter))/checkPulseSize;
         
-        ipFindZeroXings(acqData)
+        pulseAP=ipAnalyzeAP(SR(pulseStart, pulseEnd));
+        
         %
         %        %     mode((['AD0_' num2str(sCounter)]).data)
         % %             figure;

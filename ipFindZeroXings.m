@@ -1,17 +1,17 @@
-function [ xings, goingUp ] = ipFindZeroXings( dData )
+function [ goingUp, goingDown ] = ipFindZeroXings( dData, level)
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
-    
-    flipSgn=(dData(1:end-1).*dData(2:end))<0;
-    notZero=dData(1:end-1)~=0;
-    pZero=(dData(1:end-1).*dData(2:end))==0;
-    
-    xing=find(flipSgn | (pZero & notZero));
-    if ~isempty(xing)
-        figure; plot(dData)
+    if nargin<2
+        level=0;
     end
-    goingUp=dData(xing)<0;
+    
+    isAbove=dData>level;
+    goingUp=find(isAbove(2:end).*~isAbove(1:end-1));
+    goingDown=find(isAbove(1:end-1).*~isAbove(2:end));
+    if ~isempty(goingUp)
+        figure; plot(dData);
+    end
     
 end
 
