@@ -1,10 +1,11 @@
 function [ output_args ] = ipLoadExcel( input_args )
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
-
+    
     evalin('base', 'global ipTableNum ipTableTxt ipTableRaw ipTableSize')
     global ipTableNum ipTableTxt ipTableRaw ipTableSize
 
+    
     [filename,pathname,~] = uigetfile('*.*','Select excel file with annotations');
     if isequal(filename,0)
         disp('User selected Cancel')

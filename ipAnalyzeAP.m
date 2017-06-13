@@ -8,10 +8,13 @@ function [ results ] = ipAnalyzeAP(dData)
     
     if isempty(gUp)
         results=[];
+        disp([   'No action potentials found']);
         return
     end
     
-    xNum=min(length(gUp), length(gDown))
+    xNum=min(length(gUp), length(gDown));
+    disp([   num2str(xNum) ' action potentials found']);
+
     results.nAP=xNum;
     
     results.AP_peak=zeros(1, xNum);
@@ -24,6 +27,13 @@ function [ results ] = ipAnalyzeAP(dData)
     g2=gradient(dData);
     g3=gradient(g2);
     
+	if length(gDown)>length(gUp)
+		if gDown(1)<gUp(1)
+			gDown=gDown(2:(length(gUp)+1));
+		else
+			disp('problem with gDown');
+		end
+	end
     gDown(end+1)=length(dData);
     gUp(end+1)=length(dData);
     
@@ -36,6 +46,13 @@ function [ results ] = ipAnalyzeAP(dData)
         Imin=Imin+gDown(counter)-1;
         thresh=(results.AP_peak(counter)-results.AP_AHP(counter))/2+results.AP_AHP(counter);
         [ggUp, ggDown]=ipFindXings(dData(lastMin:Imin), 0, 1);
+		if length(ggDown)>length(ggUp)
+			if ggDown(1)<ggUp(1)
+				ggDown=ggDown(2:(length(ggUp)+1));
+			else
+				disp('problem with ggDown');
+			end
+		end
         results.AP_HW(counter)=ggDown-ggUp;
         results.AP_HW_thresh(counter)=thresh;
         results.AP_maxRiseRate(counter)=max(g2(lastMin:Imax));
