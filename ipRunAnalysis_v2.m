@@ -23,6 +23,8 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
 		savePath=[];
 	end
 	
+	keepOnlyFirst=1;
+	
 %% set up the variables to process data
 
 	pulseList.p1=[-100 -75 -50 -25 10 20 30 40 50 60 70 80 90 100 150 200 250];
@@ -34,8 +36,8 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
 	checkPulseStart=200;
 	checkPulseEnd=500;
 %	prepath='/Users/Bernardo/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
-%	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
-	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig2analysisCellCharic/';
+	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
+%	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig2analysisCellCharic/';
 
 	% column order assumptions
 	% 'Date' 'Animal' 'CellN' 'Epoch' 'EpochEnd' 'SweepStart' 'SweepEnd' 'ML' 'DV' 'Injection ' 'Notes'
@@ -43,7 +45,8 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
 %% nested function to return a subrange of the data 
     function rang=SR(startS, endS)
         rang=acqData(floor(startS*acqRate):floor(endS*acqRate));
-    end
+	end
+
 %% nested function to extract a number from string
     function ns=extractNum(s)
         if isnumeric(s) 
@@ -56,7 +59,8 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
                 ns=str2double(s(si+1:end));
             end
         end
-    end
+	end
+
 %% nested function to return a value from the headerstring
     function hv=headerValue(sString, conv)
         if nargin<2
@@ -72,6 +76,14 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
 		ww=(x>=lo) & (x<=hi);
 		return
 	end
+
+%% nested function to return only non-nan entries
+	function ap=nonNan(a)
+		ap=a(find(~isnan(a)));
+		return
+	end
+%%
+		
 
 %% run through the cells in the list
 
@@ -131,6 +143,9 @@ for cellCounter=cellList
 	newCell.reboundV=nan(1, nAcq);
 	newCell.reboundAP=nan(1,nAcq);
 		
+	
+	fullPulse=zeros(1, length(newCell.pulseList));
+	
 %% run through the acquisitions and calculate passive parameters
 % use to do a first pass QC 
 % examine resting potential, RC
@@ -140,7 +155,7 @@ for cellCounter=cellList
         sFile=fullfile(fullpath, ['AD0_' num2str(acqNum) '.mat']);
         a=load(sFile);
         
-       newCell.acq{sCounter}=a.(['AD0_' num2str(acqNum)]);
+        newCell.acq{sCounter}=a.(['AD0_' num2str(acqNum)]);
         
         newCell.acqNum(sCounter)=acqNum;
         newCell.cycleName{sCounter}=headerValue('state.cycle.cycleName');
@@ -152,37 +167,46 @@ for cellCounter=cellList
 		deltaI=newCell.pulseList(newCell.cyclePosition(sCounter))...
 			*newCell.extraGain(sCounter);
 		newCell.pulseI(sCounter)=deltaI;
-       
-        newCell.storedVm(sCounter)=headerValue('state.phys.cellParams.vm0', 1);
-        newCell.storedIm(sCounter)=headerValue('state.phys.cellParams.im0', 1);
-        newCell.storedRm(sCounter)=headerValue('state.phys.cellParams.rm0', 1);
-        
-        acqData=a.(['AD0_' num2str(acqNum)]).data;
-        if sCounter==1 % assume that the DAC sample rate doesn't change.
-			acqRate=headerValue('state.phys.settings.inputRate', 1)/1000; % points per ms
-			newCell.acqRate=acqRate;
-			acqEndPt=length(acqData)-1;
-			acqLen=length(acqData)/acqRate;
+		
+		if fullPulse(newCell.cyclePosition(sCounter))==0
+			fullPulse(newCell.cyclePosition(sCounter))=sCounter;
+			first=1;
+		else
+			first=0;
 		end
-		
-        newCell.VrestMode(sCounter)=mode(round(SR(checkPulseEnd+100, pulseStart-10)));
-        newCell.VrestMean(sCounter)=mean(SR(checkPulseEnd+100, pulseStart-10));
-		
-		notPulse=[SR(1, checkPulseStart-1) SR(checkPulseEnd+20, pulseStart-10) SR(pulseEnd+100, 2999)];
-		newCell.noise(sCounter)=std(notPulse);
-		
-		[newCell.stepTau(sCounter), ...
-			newCell.stepRmE(sCounter), ...
-			newCell.stepRmF(sCounter), ...
-			newCell.stepCm(sCounter)] = ...
-			ipAnalyzeRC(SR(checkPulseStart,checkPulseEnd)-newCell.VrestMean(sCounter), ...
-			checkPulseSize, acqRate);
+				
+		if ~keepOnlyFirst || (keepOnlyFirst && first)
+			newCell.storedVm(sCounter)=headerValue('state.phys.cellParams.vm0', 1);
+			newCell.storedIm(sCounter)=headerValue('state.phys.cellParams.im0', 1);
+			newCell.storedRm(sCounter)=headerValue('state.phys.cellParams.rm0', 1);
+
+			acqData=a.(['AD0_' num2str(acqNum)]).data;
+			if sCounter==1 % assume that the DAC sample rate doesn't change.
+				acqRate=headerValue('state.phys.settings.inputRate', 1)/1000; % points per ms
+				newCell.acqRate=acqRate;
+				acqEndPt=length(acqData)-1;
+				acqLen=length(acqData)/acqRate;
+			end
+
+			newCell.VrestMode(sCounter)=mode(round(SR(checkPulseEnd+100, pulseStart-10)));
+			newCell.VrestMean(sCounter)=mean(SR(checkPulseEnd+100, pulseStart-10));
+
+			notPulse=[SR(1, checkPulseStart-1) SR(checkPulseEnd+20, pulseStart-10) SR(pulseEnd+100, 2999)];
+			newCell.noise(sCounter)=std(notPulse);
+
+			[newCell.stepTau(sCounter), ...
+				newCell.stepRmE(sCounter), ...
+				newCell.stepRmF(sCounter), ...
+				newCell.stepCm(sCounter)] = ...
+				ipAnalyzeRC(SR(checkPulseStart,checkPulseEnd)-newCell.VrestMean(sCounter), ...
+				checkPulseSize, acqRate);
+		end
 	end
 		
-	avgVm=median(newCell.VrestMean);
-	avgStepRmE=median(newCell.stepRmE);
-	avgStepRmF=median(newCell.stepRmF);
-	avgStepCm=median(newCell.stepCm);
+	avgVm=median(nonNan(newCell.VrestMean));
+	avgStepRmE=median(nonNan(newCell.stepRmE));
+	avgStepRmF=median(nonNan(newCell.stepRmF));
+	avgStepCm=median(nonNan(newCell.stepCm));
 	
 	hiV_cutoff=-55; 
 	loV=avgVm-5;
@@ -207,11 +231,18 @@ for cellCounter=cellList
 	ylabel('V (mV)')
 	hold on
 	
-	goodTraces=find(newCell.traceQC);
+	if ~keepOnlyFirst
+		goodTraces=find(newCell.traceQC);	
+		denom=nAcq;
+	else
+		goodTraces=intersect(find(newCell.traceQC), fullPulse)
+		denom=length(find(fullPulse>0));
+	end
+		
 	nGood=length(goodTraces);
 
 	avgData=[];
-	if nGood>nAcq/2
+	if nGood>denom/2
 		newCell.QC=1;
 	else
 		newCell.QC=0;
