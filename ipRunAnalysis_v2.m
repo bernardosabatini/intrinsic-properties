@@ -13,33 +13,37 @@ function [ output_args ] = ipRunAnalysis( cellList )
 % F @ 200 pA
 % 
 
-[~, savePath]=uiputfile('output.mat', 'Select output path');
+	[~, savePath]=uiputfile('output.mat', 'Select output path');
 
-global ipTableRaw ipTableSize
+	evalin('base', 'global newCell');
+	global ipTableRaw ipTableSize newCell
 
-if ~isnumeric(savePath) && ~isempty(savePath)
-	save(fullfile(savePath, 'rawData.mat'), 'ipTableRaw', 'ipTableSize');
-else
-	savePath=[];
-end
+	if ~isnumeric(savePath) && ~isempty(savePath)
+		save(fullfile(savePath, 'rawData.mat'), 'ipTableRaw', 'ipTableSize');
+	else
+		savePath=[];
+	end
 
-if nargin<1 || isempty(cellList)
-    cellList=1:ipTableSize(2)-1;
-end
+	if nargin<1 || isempty(cellList)
+		cellList=1:ipTableSize(2)-1;
+	end
+	
+	
 %% set up the variables to process data
 
-pulseList.p1=[-100 -75 -50 -25 10 20 30 40 50 60 70 80 90 100 150 200 250];
-pulseList.p2=[-100 0 20 40 60 80 100 150 200 250 300];
+	pulseList.p1=[-100 -75 -50 -25 10 20 30 40 50 60 70 80 90 100 150 200 250];
+	pulseList.p2=[-100 0 20 40 60 80 100 150 200 250 300];
 
-pulseStart=1500;
-pulseEnd=2500;
-checkPulseSize=-50;
-checkPulseStart=200;
-checkPulseEnd=500;
-prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
+	pulseStart=1500;
+	pulseEnd=2500;
+	checkPulseSize=-50;
+	checkPulseStart=200;
+	checkPulseEnd=500;
+	prepath='/Users/Bernardo/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
+%	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
 
-% column order assumptions
-% 'Date' 'Animal' 'CellN' 'Epoch' 'EpochEnd' 'SweepStart' 'SweepEnd' 'ML' 'DV' 'Injection ' 'Notes'
+	% column order assumptions
+	% 'Date' 'Animal' 'CellN' 'Epoch' 'EpochEnd' 'SweepStart' 'SweepEnd' 'ML' 'DV' 'Injection ' 'Notes'
 
 %% nested function to return a subrange of the data 
     function rang=SR(startS, endS)
@@ -65,7 +69,15 @@ prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig
         end
         hv=ipHeaderValue(a.(['AD0_' num2str(acqNum)]).UserData.headerString, ...
             sString, conv);
-    end
+	end
+	
+%% nested function to return a value from the headerstring
+%
+	function ww=within(x, lo, hi)
+		ww=(x>=lo) & (x<=hi);
+		return
+	end
+
 %% run through the cells in the list
 
 for cellCounter=cellList 
@@ -86,6 +98,7 @@ for cellCounter=cellList
 	newCell.pulseID=ipTableRaw{rowCounter,13};
 	newCell.pulseList=pulseList.(['p' num2str(newCell.pulseID)]);
 	newCell.QC=1; % assume passes QC
+	newCell.acqRate=0;
 	
 	newCell.acq=cell(1,nAcq); % store the full object for that acq sweep
     
@@ -94,30 +107,34 @@ for cellCounter=cellList
     newCell.cyclePosition=nan(1, nAcq);
     newCell.pulsePattern=nan(1, nAcq);
     newCell.extraGain=nan(1, nAcq);
-    newCell.pulseSize=nan(1, nAcq);
-    
+
     newCell.storedVm=nan(1, nAcq);
     newCell.storedIm=nan(1, nAcq);
     newCell.storedRm=nan(1, nAcq);
     
-    newCell.VrestMode=nan(1, nAcq);
+   	newCell.traceQC=ones(1, nAcq);
+
+	newCell.VrestMode=nan(1, nAcq);
     newCell.VrestMean=nan(1, nAcq);
-    newCell.stepCm=nan(1, nAcq);
+	newCell.noise=nan(1, nAcq);
+
+	newCell.stepCm=nan(1, nAcq);
     newCell.stepTau=nan(1, nAcq);
     newCell.stepRmE=nan(1, nAcq);
     newCell.stepRmF=nan(1, nAcq);
+ 
+	newCell.pulseI=nan(1, nAcq);
     newCell.pulseRm=nan(1, nAcq);
-    newCell.Vstep=nan(1, nAcq);
-    newCell.nAP=nan(1, nAcq);
-    newCell.traceQC=ones(1, nAcq);
-	newCell.sagV=nan(1, nAcq);
+    newCell.pulseV=nan(1, nAcq);
+    newCell.pulseAP=nan(1, nAcq);   
+	newCell.pulseSagV=nan(1, nAcq);
+	
 	newCell.reboundV=nan(1, nAcq);
 	newCell.reboundAP=nan(1,nAcq);
-	
-	avgData=[];
-	
-    %% run through the acquisitions and do a first pass QC 
-	% examine resting potential, RC, 
+		
+%% run through the acquisitions and calculate passive parameters
+% use to do a first pass QC 
+% examine resting potential, RC
     
 	for sCounter=1:nAcq
         acqNum=sCounter+sStart-1;
@@ -135,16 +152,21 @@ for cellCounter=cellList
 		
 		deltaI=newCell.pulseList(newCell.cyclePosition(sCounter))...
 			*newCell.extraGain(sCounter);
-		newCell.pulseSize(sCounter)=deltaI;
+		newCell.pulseI(sCounter)=deltaI;
        
         newCell.storedVm(sCounter)=headerValue('state.phys.cellParams.vm0', 1);
         newCell.storedIm(sCounter)=headerValue('state.phys.cellParams.im0', 1);
         newCell.storedRm(sCounter)=headerValue('state.phys.cellParams.rm0', 1);
         
         acqData=a.(['AD0_' num2str(acqNum)]).data;
-        acqRate=headerValue('state.phys.settings.inputRate', 1)/1000; % points per ms
+        if sCounter==1 % assume that the DAC sample rate doesn't change.
+			acqRate=headerValue('state.phys.settings.inputRate', 1)/1000; % points per ms
+			newCell.acqRate=acqRate;
+			acqEndPt=length(acqData)-1;
+			acqLen=length(acqData)/acqRate;
+		end
 		
-        newCell.VrestMode(sCounter)=mode(round(SR(checkPulseEnd+100, pulseStart-10)));
+   %     newCell.VrestMode(sCounter)=mode(round(SR(checkPulseEnd+100, pulseStart-10)));
         newCell.VrestMean(sCounter)=mean(SR(checkPulseEnd+100, pulseStart-10));
 		
 		notPulse=[SR(1, checkPulseStart-1) SR(checkPulseEnd+20, pulseStart-10) SR(pulseEnd+100, 2999)];
@@ -154,7 +176,7 @@ for cellCounter=cellList
 			newCell.stepRmE(sCounter), ...
 			newCell.stepRmF(sCounter), ...
 			newCell.stepCm(sCounter)] = ...
-			ipAnalyzeRC(SR(checkPulseStart,checkPulseEnd)-newCell.VrestMean(sCounter), ...
+			ipAnalyzeRC(SR(checkPulseStart,checkPulseEnd), ...
 			checkPulseSize, acqRate);
 	end
 		
@@ -169,60 +191,82 @@ for cellCounter=cellList
 	
 	loR=avgStepRmE*0.9;
 	hiR=avgStepRmE*1.1;
-	
-	%% nested function to return a value from the headerstring
-	%
-	function ww=within(x, lo, hi)
-		ww=(x>=lo) && (x<=hi);
-		return
-	end
-	%% 
-	
+
 	newCell.traceQC=...
-		within(newCell.VrestMean, loV, hiV) && ...
+		within(newCell.VrestMean, loV, hiV) & ...
 		within(newCell.stepRmE, loR, hiR)...
 		;
 	
-	goodTraces=find(newCell.traceQC);
-	nGood=length(goodTraces);
-	
-	avgData=[];
-	if nGood>nAcq/2
-		newCell.QC=1;
-		for sCounter=goodTraces
-			acqData=newCell.acq{sCounter}.data;
-			if isempty(avgData)
-				avgData=acqData;
-			else
-				avgData=avgData+acqData;
-			end
-		end
-	else
-		newCell.QC=1;
-	end
-	
-%%		
+%% plot of the traces that survive QC
     fFig=figure('name', [newCell.mouseID ' ' newCell.cellID]);
 	hold on
 	
-	a1=subplot(2, 2, [1 2]);
-	title(a1, 'Acquisitions');
+	a1=subplot(3, 2, [1 2]);
+	title(a1, 'Good acquisitions');
 	xlabel('time (ms)') 
 	ylabel('V (mV)')
 	hold on
+	
+	goodTraces=find(newCell.traceQC);
+	nGood=length(goodTraces);
 
-    for sCounter=1:nAcq
+	avgData=[];
+	if nGood>nAcq/2
+		newCell.QC=1;
+	end
+	
+	for sCounter=goodTraces
+		acqData=newCell.acq{sCounter}.data;
+		plot([0:acqEndPt]/acqRate, acqData);
+
+		if isempty(avgData)
+			avgData=acqData/nGood;
+		else
+			avgData=avgData+acqData/nGood;
+		end
+	end
+
+	if ~isempty(avgData)
+		newCell.avgData=avgData;
+		newCell.avgVrestMean=mean(newCell.avgData([checkPulseEnd+100:pulseStart-10]*acqRate));
+
+		[newCell.avgStepTau, ...
+			newCell.avgStepRmE, ...
+			newCell.avgStepRmF, ...
+			newCell.avgStepCm] = ...
+			ipAnalyzeRC(newCell.avgData([checkPulseEnd+100:pulseStart-10]*acqRate), ...
+			checkPulseSize, acqRate);
+	else
+		newCell.avgVrestMean=nan;
+		newCell.avgStepTau=nan;
+		newCell.avgStepRmE=nan;
+		newCell.avgStepRmF=nan;
+		newCell.avgStepCm=nan;
+		newCell.QC=0;
+	end
+	
+%% plot the rejected traces
+	notGoodTraces=find(~newCell.traceQC);
+	a1n=subplot(3, 2, [3 4]);
+	title(a1n, 'Bad acquisitions');
+	xlabel('time (ms)') 
+	ylabel('V (mV)')
+	hold on	
+	for sCounter=notGoodTraces
+		acqData=newCell.acq{sCounter}.data;
+		plot([0:acqEndPt]/acqRate, acqData);
+	end
+	
+%% Run through the good ones and extract data
+
+    for sCounter=goodTraces
         acqData=newCell.acq{sCounter}.data;
-        acqRate=headerValue('state.phys.settings.inputRate', 1)/1000; % points per ms
-        plot((1/acqRate)*[0:(length(acqData)-1)], acqData);
 		
-        newCell.VrestMode(sCounter)=mode(round(SR(checkPulseEnd+100, pulseStart-10)));
-        newCell.VrestMean(sCounter)=mean(SR(checkPulseEnd+100, pulseStart-10));
-        newCell.Vstep(sCounter)=mode(round(SR(pulseStart, pulseEnd)));
+        newCell.pulseV(sCounter)=mode(round(SR(pulseStart, pulseEnd)));
         
 		if deltaI~=0
 	        newCell.pulseRm(sCounter)=1000*...       % Rm in MOhm
-	            (newCell.Vstep(sCounter)-newCell.VrestMean(sCounter))/deltaI;
+	            (newCell.pulseV(sCounter)-newCell.VrestMean(sCounter))/deltaI;
 			if deltaI<0
 				minHyp=min(SR(pulseStart, pulseEnd));
 				endHyp=mean(SR(pulseEnd-20,pulseEnd-1));
@@ -232,91 +276,48 @@ for cellCounter=cellList
 			end
 		end
 		
-		notPulse=[SR(1, checkPulseStart-1) SR(checkPulseEnd+20, pulseStart-10) SR(pulseEnd+100, 2999)];
-		newCell.noise(sCounter)=std(notPulse);
-		
-        newCell.pulseAP{sCounter}=ipAnalyzeAP(SR(pulseStart, pulseEnd));
-		if isempty(newCell.pulseAP{sCounter})
-			newCell.nAP(sCounter)=0;
+		newCell.pulseAPData{sCounter}=ipAnalyzeAP(SR(pulseStart, pulseEnd));
+		if isempty(newCell.pulseAPData{sCounter})
+			newCell.pulseAP(sCounter)=0;
 		else
-			newCell.nAP(sCounter)=newCell.pulseAP{sCounter}.nAP;
+			newCell.pulseAP(sCounter)=newCell.pulseAPData{sCounter}.nAP;
 		end
 		
-        newCell.postAP{sCounter}=ipAnalyzeAP(SR(pulseEnd+1, floor(length(acqData)/acqRate)));
- 		if isempty(newCell.postAP{sCounter})
+        newCell.reboundAPData{sCounter}=ipAnalyzeAP(SR(pulseEnd+1, acqLen));
+ 		if isempty(newCell.reboundAPData{sCounter})
 			newCell.reboundAP(sCounter)=0;
 		else
-			newCell.reboundAP(sCounter)=newCell.postAP{sCounter}.nAP;
+			newCell.reboundAP(sCounter)=newCell.reboundAPData{sCounter}.nAP;
 		end
-		newCell.pulseAHP(sCounter)=min(SR(pulseEnd+1, floor(length(acqData)/acqRate)))-...
+		
+		newCell.pulseAHP(sCounter)=min(SR(pulseEnd+1, acqLen))- ...
 			newCell.VrestMean(sCounter);
         
-		[newCell.stepTau(sCounter), ...
-			newCell.stepRmE(sCounter), ...
-			newCell.stepRmF(sCounter), ...
-			newCell.stepCm(sCounter)] = ...
-			ipAnalyzeRC(SR(checkPulseStart,checkPulseEnd)-newCell.VrestMean(sCounter), ...
-			checkPulseSize, acqRate);
-		
-		% decide here reasons to reject a trace
-		if newCell.VrestMode(sCounter)>-55
-			newCell.traceQC(sCounter)=0;
-		else
-			if isempty(avgData)
-				avgData=acqData;
-			else
-				avgData=avgData+acqData;
-			end
-		end
 	end
 	
-	
-	
-	
-	goodT=find(newCell.traceQC);
-	if isempty(avgData)
-		newCell.avgVrestMean=nan;
-		newCell.avgStepTau=nan;
-		newCell.avgStepRmE=nan;
-		newCell.avgStepRmF=nan;
-		newCell.avgStepCm=nan;
-	else
-		newCell.avgData=avgData/length(goodT);
-		newCell.avgVrestMean=mean(newCell.avgData(acqRate*[checkPulseEnd+100:pulseStart-10]));
-		[newCell.avgStepTau, ...
-			newCell.avgStepRmE, ...
-			newCell.avgStepRmF, ...
-			newCell.avgStepCm] = ...
-			ipAnalyzeRC(newCell.avgData(acqRate*[checkPulseEnd+100:pulseStart-10])-newCell.avgVrestMean, ...
-			checkPulseSize, acqRate);
-	end	
-	
-	
-	lowV=mean(newCell.VrestMean)-5;
-	highV=mean(newCell.VrestMean)+5;
-	
-	
-	
+
 	newName=[newCell.mouseID '_' newCell.cellID];
 	
-	a2=subplot(2, 2, 3);
-	yyaxis left
-	scatter(newCell.pulseSize(goodT), newCell.Vstep(goodT))
+	a2=subplot(3, 2, 5);
+%%	yyaxis left
+	scatter(newCell.pulseI(goodTraces), newCell.pulseV(goodTraces))
 	ylabel('V (mV)')
-	yyaxis right
-	scatter(newCell.pulseSize(goodT), newCell.nAP(goodT))
+%%	yyaxis right
+	scatter(newCell.pulseI(goodTraces), newCell.pulseAP(goodTraces))
 	title(a2, 'vs CURRENT')
 	ylabel('# AP')
 	xlabel('step (pA)') 
 
-	a3=subplot(2, 2, 4);
-	scatter(newCell.Vstep(goodT), newCell.nAP(goodT));
+	a3=subplot(3, 2, 6);
+	scatter(newCell.pulseV(goodTraces), newCell.pulseAP(goodTraces));
 	title(a3, 'vs VOLTAGE')
 	xlabel('V (mV)') 
 	ylabel('# AP')
+	
 	if ~isempty(savePath)
+		save(fullfile(savePath, [newName '.mat']), 'newCell');
 		saveas(fFig, fullfile(savePath, [newName 'Fig.fig']));
-		print(fullfile(savePath, [newName 'FigPDF']),'-dpdf','-fillpage')
+	%	print(fullfile(savePath, [newName 'FigPDF']),'-dpdf','-fillpage')
 		save(fullfile(savePath, [newName '.mat']), 'newCell');
 	end
 end

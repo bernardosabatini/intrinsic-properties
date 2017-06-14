@@ -8,12 +8,12 @@ function [ results ] = ipAnalyzeAP(dData)
     
     if isempty(gUp)
         results=[];
-        disp([   'No action potentials found']);
+%        disp([   'No action potentials found']);
         return
     end
     
     xNum=min(length(gUp), length(gDown));
-    disp([   num2str(xNum) ' action potentials found']);
+%    disp([   num2str(xNum) ' action potentials found']);
 
     results.nAP=xNum;
     
