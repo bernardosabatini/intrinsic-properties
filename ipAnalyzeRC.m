@@ -11,6 +11,6 @@ function [ tau, rmE, rmF, cm ] = ipAnalyzeRC(dData, pulseSize, acqRate)
 	tau=1/ff.b;
 	rmF=-ff.a/pulseSize*1000;
 	rmE=bl/pulseSize*1000;
-	cm=tau/rmE;
+	cm=-1000*tau/rmE;
 end
 

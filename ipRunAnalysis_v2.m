@@ -1,33 +1,27 @@
-function [ output_args ] = ipRunAnalysis( cellList )
+function [ output_args ] = ipRunAnalysis_v2( cellList )
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
-% % things for global (x-cell) output
-% Vrest
-% Ihold
-% Cm
-% Tau
-% V/I
-% F/I
-% F @ 100 pA
-% F @ 200 pA
-% 
-
 	[~, savePath]=uiputfile('output.mat', 'Select output path');
 
-	evalin('base', 'global newCell');
-	global ipTableRaw ipTableSize newCell
+	evalin('base', 'global newCell ipAllCells ipAllCellsLabels');
+	global ipTableRaw ipTableSize newCell ipAllCells ipAllCellsLabels
 
+
+	if nargin<1 || isempty(cellList)
+		cellList=1:ipTableSize(2)-1;
+	end
+
+	ipAllCellsLabels={'CellID', 'ML', 'DV', 'Injection', 'Vrest', 'Cm', ...
+		'Rm', 'Tau', 'F100', 'F200', 'V100', 'V200', 'sag', 'rebound', 'noise', 'pulseI', 'pulseV', 'pulseAP', ...
+		'pulseAHP', 'reboundAP', 'reboundV'};
+	ipAllCells=cell(max(cellList), length(ipAllCellsLabels));
+	
 	if ~isnumeric(savePath) && ~isempty(savePath)
 		save(fullfile(savePath, 'rawData.mat'), 'ipTableRaw', 'ipTableSize');
 	else
 		savePath=[];
 	end
-
-	if nargin<1 || isempty(cellList)
-		cellList=1:ipTableSize(2)-1;
-	end
-	
 	
 %% set up the variables to process data
 
@@ -39,8 +33,9 @@ function [ output_args ] = ipRunAnalysis( cellList )
 	checkPulseSize=-50;
 	checkPulseStart=200;
 	checkPulseEnd=500;
-	prepath='/Users/Bernardo/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
+%	prepath='/Users/Bernardo/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
 %	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
+	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig2analysisCellCharic/';
 
 	% column order assumptions
 	% 'Date' 'Animal' 'CellN' 'Epoch' 'EpochEnd' 'SweepStart' 'SweepEnd' 'ML' 'DV' 'Injection ' 'Notes'
@@ -99,6 +94,10 @@ for cellCounter=cellList
 	newCell.pulseList=pulseList.(['p' num2str(newCell.pulseID)]);
 	newCell.QC=1; % assume passes QC
 	newCell.acqRate=0;
+	newCell.ML=ipTableRaw{rowCounter,8};
+	newCell.DV=ipTableRaw{rowCounter,9};
+	newCell.injection=ipTableRaw{rowCounter,10};
+	newCell.notes=ipTableRaw{rowCounter,11};
 	
 	newCell.acq=cell(1,nAcq); % store the full object for that acq sweep
     
@@ -135,13 +134,13 @@ for cellCounter=cellList
 %% run through the acquisitions and calculate passive parameters
 % use to do a first pass QC 
 % examine resting potential, RC
-    
-	for sCounter=1:nAcq
+    		
+ 	for sCounter=1:nAcq
         acqNum=sCounter+sStart-1;
         sFile=fullfile(fullpath, ['AD0_' num2str(acqNum) '.mat']);
         a=load(sFile);
         
-        newCell.acq{sCounter}=a.(['AD0_' num2str(acqNum)]);
+       newCell.acq{sCounter}=a.(['AD0_' num2str(acqNum)]);
         
         newCell.acqNum(sCounter)=acqNum;
         newCell.cycleName{sCounter}=headerValue('state.cycle.cycleName');
@@ -166,7 +165,7 @@ for cellCounter=cellList
 			acqLen=length(acqData)/acqRate;
 		end
 		
-   %     newCell.VrestMode(sCounter)=mode(round(SR(checkPulseEnd+100, pulseStart-10)));
+        newCell.VrestMode(sCounter)=mode(round(SR(checkPulseEnd+100, pulseStart-10)));
         newCell.VrestMean(sCounter)=mean(SR(checkPulseEnd+100, pulseStart-10));
 		
 		notPulse=[SR(1, checkPulseStart-1) SR(checkPulseEnd+20, pulseStart-10) SR(pulseEnd+100, 2999)];
@@ -176,7 +175,7 @@ for cellCounter=cellList
 			newCell.stepRmE(sCounter), ...
 			newCell.stepRmF(sCounter), ...
 			newCell.stepCm(sCounter)] = ...
-			ipAnalyzeRC(SR(checkPulseStart,checkPulseEnd), ...
+			ipAnalyzeRC(SR(checkPulseStart,checkPulseEnd)-newCell.VrestMean(sCounter), ...
 			checkPulseSize, acqRate);
 	end
 		
@@ -202,7 +201,8 @@ for cellCounter=cellList
 	hold on
 	
 	a1=subplot(3, 2, [1 2]);
-	title(a1, 'Good acquisitions');
+	title(a1, ['Good acquisitions ML ' num2str(newCell.ML) ...
+		' DV ' num2str(newCell.DV) ' Inj ' newCell.injection]);
 	xlabel('time (ms)') 
 	ylabel('V (mV)')
 	hold on
@@ -213,6 +213,8 @@ for cellCounter=cellList
 	avgData=[];
 	if nGood>nAcq/2
 		newCell.QC=1;
+	else
+		newCell.QC=0;
 	end
 	
 	for sCounter=goodTraces
@@ -234,7 +236,7 @@ for cellCounter=cellList
 			newCell.avgStepRmE, ...
 			newCell.avgStepRmF, ...
 			newCell.avgStepCm] = ...
-			ipAnalyzeRC(newCell.avgData([checkPulseEnd+100:pulseStart-10]*acqRate), ...
+			ipAnalyzeRC(newCell.avgData([checkPulseStart:checkPulseEnd]*acqRate)-newCell.avgVrestMean, ...
 			checkPulseSize, acqRate);
 	else
 		newCell.avgVrestMean=nan;
@@ -259,11 +261,17 @@ for cellCounter=cellList
 	
 %% Run through the good ones and extract data
 
+	F100=nan;
+	F200=nan;
+	V100=nan;
+	V200=nan;
+	
     for sCounter=goodTraces
         acqData=newCell.acq{sCounter}.data;
 		
         newCell.pulseV(sCounter)=mode(round(SR(pulseStart, pulseEnd)));
-        
+        deltaI=newCell.pulseI(sCounter);
+		
 		if deltaI~=0
 	        newCell.pulseRm(sCounter)=1000*...       % Rm in MOhm
 	            (newCell.pulseV(sCounter)-newCell.VrestMean(sCounter))/deltaI;
@@ -275,12 +283,19 @@ for cellCounter=cellList
 					-newCell.VrestMean(sCounter);
 			end
 		end
-		
+
 		newCell.pulseAPData{sCounter}=ipAnalyzeAP(SR(pulseStart, pulseEnd));
 		if isempty(newCell.pulseAPData{sCounter})
 			newCell.pulseAP(sCounter)=0;
 		else
 			newCell.pulseAP(sCounter)=newCell.pulseAPData{sCounter}.nAP;
+			if deltaI==100 && isnan(F100)
+				F100=newCell.pulseAP(sCounter);
+				V100=newCell.pulseV(sCounter);
+			elseif deltaI==200 && isnan(F200);
+				F200=newCell.pulseAP(sCounter);
+				V200=newCell.pulseV(sCounter);
+			end
 		end
 		
         newCell.reboundAPData{sCounter}=ipAnalyzeAP(SR(pulseEnd+1, acqLen));
@@ -292,17 +307,16 @@ for cellCounter=cellList
 		
 		newCell.pulseAHP(sCounter)=min(SR(pulseEnd+1, acqLen))- ...
 			newCell.VrestMean(sCounter);
-        
 	end
 	
 
 	newName=[newCell.mouseID '_' newCell.cellID];
 	
 	a2=subplot(3, 2, 5);
-%%	yyaxis left
+	yyaxis left
 	scatter(newCell.pulseI(goodTraces), newCell.pulseV(goodTraces))
 	ylabel('V (mV)')
-%%	yyaxis right
+	yyaxis right
 	scatter(newCell.pulseI(goodTraces), newCell.pulseAP(goodTraces))
 	title(a2, 'vs CURRENT')
 	ylabel('# AP')
@@ -313,15 +327,41 @@ for cellCounter=cellList
 	title(a3, 'vs VOLTAGE')
 	xlabel('V (mV)') 
 	ylabel('# AP')
+
+	ipAllCells{cellCounter,1}=newName;
+	ipAllCells{cellCounter,2}=newCell.ML;
+	ipAllCells{cellCounter,3}=newCell.DV;
+	ipAllCells{cellCounter,4}=newCell.injection;
+	ipAllCells{cellCounter,5}=newCell.avgVrestMean;
+	ipAllCells{cellCounter,6}=newCell.avgStepCm;
+	ipAllCells{cellCounter,7}=newCell.avgStepRmF;
+	ipAllCells{cellCounter,8}=newCell.avgStepTau;
+	ipAllCells{cellCounter,9}=F100;
+	ipAllCells{cellCounter,10}=F200;
+	ipAllCells{cellCounter,11}=V100;
+	ipAllCells{cellCounter,12}=V200;
+	if newCell.QC
+		ipAllCells{cellCounter,13}=newCell.sagV;
+		ipAllCells{cellCounter,14}=newCell.reboundV;
+		ipAllCells{cellCounter,15}=newCell.noise;
+		ipAllCells{cellCounter,16}=newCell.pulseI;
+		ipAllCells{cellCounter,17}=newCell.pulseV;
+		ipAllCells{cellCounter,18}=newCell.pulseAP;
+		ipAllCells{cellCounter,19}=newCell.pulseAHP;
+		ipAllCells{cellCounter,20}=newCell.reboundAP;
+		ipAllCells{cellCounter,21}=newCell.reboundV;
+	end
 	
 	if ~isempty(savePath)
-		save(fullfile(savePath, [newName '.mat']), 'newCell');
-		saveas(fFig, fullfile(savePath, [newName 'Fig.fig']));
-	%	print(fullfile(savePath, [newName 'FigPDF']),'-dpdf','-fillpage')
-		save(fullfile(savePath, [newName '.mat']), 'newCell');
+%		saveas(fFig, fullfile(savePath, [newName 'Fig.fig']));
+		print(fullfile(savePath, [newName 'FigPDF']),'-dpdf','-fillpage')
+		save(fullfile(savePath, [newName '.mat']), 'newCell');	
 	end
 end
 
+if ~isempty(savePath)
+	save(fullfile(savePath, 'ipAllCells.mat'), 'ipAllCells', 'ipAllCellsLabels');	
+end
 
 
 end
