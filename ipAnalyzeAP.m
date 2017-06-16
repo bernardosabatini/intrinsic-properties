@@ -1,4 +1,4 @@
-function [ results ] = ipAnalyzeAP(dData)
+function [ results ] = ipAnalyzeAP(dData, acqRate)
 %UNTITLED2 Summary of this function goes here
 %   Detailed explanation goes here
     
@@ -6,6 +6,10 @@ function [ results ] = ipAnalyzeAP(dData)
     gUp=floor(gUp);
     gDown=ceil(gDown);
     
+	if nargin<2
+		acqRate=10;
+	end
+	
     if isempty(gUp)
         results=[];
 %        disp([   'No action potentials found']);
@@ -60,6 +64,9 @@ function [ results ] = ipAnalyzeAP(dData)
         results.AP_thresh(counter)=dData(lastMin+I-1);
         results.AP_time(counter)=lastMin+I-1;
         lastMin=Imin;
-    end
+	end
+    results.AP_time=results.AP_time/acqRate;
+    results.AP_HW=results.AP_HW/acqRate;
+	
 end
 

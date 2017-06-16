@@ -13,7 +13,8 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
 	end
 
 	ipAllCellsLabels={'CellID', 'ML', 'DV', 'Injection', 'Vrest', 'Cm', ...
-		'Rm', 'Tau', 'F100', 'F200', 'V100', 'V200', 'sag', 'rebound', 'noise', 'pulseI', 'pulseV', 'pulseAP', ...
+		'Rm', 'Tau', 'F100', 'F200', 'V100', 'V200', 'firstAPwidth', 'firstAPthresh', 'firstAPdvdt',  'firstAPAHP', ...
+		'sag', 'rebound', 'noise', 'pulseI', 'pulseV', 'pulseAP', ...
 		'pulseAHP', 'reboundAP', 'reboundV'};
 	ipAllCells=cell(max(cellList), length(ipAllCellsLabels));
 	
@@ -79,7 +80,7 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
 
 %% nested function to return only non-nan entries
 	function ap=nonNan(a)
-		ap=a(find(~isnan(a)));
+		ap=a(~isnan(a));
 		return
 	end
 %%
@@ -205,10 +206,10 @@ for cellCounter=cellList
 		
 	avgVm=median(nonNan(newCell.VrestMean));
 	avgStepRmE=median(nonNan(newCell.stepRmE));
-	avgStepRmF=median(nonNan(newCell.stepRmF));
-	avgStepCm=median(nonNan(newCell.stepCm));
+%	avgStepRmF=median(nonNan(newCell.stepRmF));
+%	avgStepCm=median(nonNan(newCell.stepCm));
 	
-	hiV_cutoff=-55; 
+	hiV_cutoff=-50; 
 	loV=avgVm-5;
 	hiV=min(avgVm+5, hiV_cutoff);
 	
@@ -235,7 +236,7 @@ for cellCounter=cellList
 		goodTraces=find(newCell.traceQC);	
 		denom=nAcq;
 	else
-		goodTraces=intersect(find(newCell.traceQC), fullPulse)
+		goodTraces=intersect(find(newCell.traceQC), fullPulse);
 		denom=length(find(fullPulse>0));
 	end
 		
@@ -296,6 +297,10 @@ for cellCounter=cellList
 	F200=nan;
 	V100=nan;
 	V200=nan;
+	firstAPwidth=nan;
+	firstAPthresh=nan;
+	firstAPdvdt=nan;
+	firstAPAHP=nan;
 	
     for sCounter=goodTraces
         acqData=newCell.acq{sCounter}.data;
@@ -315,7 +320,7 @@ for cellCounter=cellList
 			end
 		end
 
-		newCell.pulseAPData{sCounter}=ipAnalyzeAP(SR(pulseStart, pulseEnd));
+		newCell.pulseAPData{sCounter}=ipAnalyzeAP(SR(pulseStart, pulseEnd), acqRate);
 		if isempty(newCell.pulseAPData{sCounter})
 			newCell.pulseAP(sCounter)=0;
 		else
@@ -327,9 +332,16 @@ for cellCounter=cellList
 				F200=newCell.pulseAP(sCounter);
 				V200=newCell.pulseV(sCounter);
 			end
+			
+			if isnan(firstAPwidth)
+				firstAPwidth=newCell.pulseAPData{sCounter}.AP_HW(1);
+				firstAPthresh=newCell.pulseAPData{sCounter}.AP_thresh(1);
+				firstAPdvdt=newCell.pulseAPData{sCounter}.AP_maxRiseRate(1);
+				firstAPAHP=newCell.pulseAPData{sCounter}.AP_AHP(1);
+			end
 		end
 		
-        newCell.reboundAPData{sCounter}=ipAnalyzeAP(SR(pulseEnd+1, acqLen));
+        newCell.reboundAPData{sCounter}=ipAnalyzeAP(SR(pulseEnd+1, acqLen), acqRate);
  		if isempty(newCell.reboundAPData{sCounter})
 			newCell.reboundAP(sCounter)=0;
 		else
@@ -371,16 +383,21 @@ for cellCounter=cellList
 	ipAllCells{cellCounter,10}=F200;
 	ipAllCells{cellCounter,11}=V100;
 	ipAllCells{cellCounter,12}=V200;
+	ipAllCells{cellCounter,13}=firstAPwidth;
+	ipAllCells{cellCounter,14}=firstAPthresh;
+	ipAllCells{cellCounter,15}=firstAPdvdt;
+	ipAllCells{cellCounter,16}=firstAPAHP;
+	
 	if newCell.QC
-		ipAllCells{cellCounter,13}=newCell.sagV;
-		ipAllCells{cellCounter,14}=newCell.reboundV;
-		ipAllCells{cellCounter,15}=newCell.noise;
-		ipAllCells{cellCounter,16}=newCell.pulseI;
-		ipAllCells{cellCounter,17}=newCell.pulseV;
-		ipAllCells{cellCounter,18}=newCell.pulseAP;
-		ipAllCells{cellCounter,19}=newCell.pulseAHP;
-		ipAllCells{cellCounter,20}=newCell.reboundAP;
-		ipAllCells{cellCounter,21}=newCell.reboundV;
+		ipAllCells{cellCounter,17}=newCell.sagV;
+		ipAllCells{cellCounter,18}=newCell.reboundV;
+		ipAllCells{cellCounter,19}=newCell.noise;
+		ipAllCells{cellCounter,20}=newCell.pulseI;
+		ipAllCells{cellCounter,21}=newCell.pulseV;
+		ipAllCells{cellCounter,22}=newCell.pulseAP;
+		ipAllCells{cellCounter,23}=newCell.pulseAHP;
+		ipAllCells{cellCounter,24}=newCell.reboundAP;
+		ipAllCells{cellCounter,25}=newCell.reboundV;
 	end
 	
 	if ~isempty(savePath)
