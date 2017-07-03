@@ -260,6 +260,7 @@ for cellCounter=cellList
 		end
 	end
 
+	
 	if ~isempty(avgData)
 		newCell.avgData=avgData;
 		newCell.avgVrestMean=mean(newCell.avgData([checkPulseEnd+100:pulseStart-10]*acqRate));
@@ -301,6 +302,7 @@ for cellCounter=cellList
 	firstAPthresh=nan;
 	firstAPdvdt=nan;
 	firstAPAHP=nan;
+
 	
     for sCounter=goodTraces
         acqData=newCell.acq{sCounter}.data;
