@@ -28,7 +28,7 @@ function [ tau, rmE, rmF, cm ] = ipAnalyzeRC(dData, pulseSize, acqRate)
 		[bl, bli]=min(dData);
 		bli=max(bli,10);
 		ff=fit(xx(1:bli)', dData(1:bli)'-bl, 'exp1', 'StartPoint', [-bl, -(bli/3)/acqRate] );
-	%	figure; plot(ff, xx, dData-bl)
+		figure; plot(ff, xx, dData-bl)
 		tau=-1/ff.b;
 		rmF=-ff.a/pulseSize*1000;
 		rmE=bl/pulseSize*1000;

@@ -14,7 +14,7 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
 
 	ipAllCellsLabels={'CellID', 'ML', 'DV', 'Injection', 'Vrest', 'Cm', ...
 		'Rm', 'Tau', 'F100', 'F200', 'V100', 'V200', 'firstAPwidth', 'firstAPthresh', 'firstAPdvdt',  'firstAPAHP', ...
-		'sag', 'rebound', 'noise', 'pulseI', 'pulseV', 'pulseAP', ...
+		'sag', 'rebound', 'VrestSD', 'pulseI', 'pulseV', 'pulseAP', ...
 		'pulseAHP', 'reboundAP', 'reboundV'};
 	ipAllCells=cell(max(cellList), length(ipAllCellsLabels));
 	
@@ -37,11 +37,15 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
 	checkPulseStart=200;
 	checkPulseEnd=500;
 %	prepath='/Users/Bernardo/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
-	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig1analysisCellCharic/';
+	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/1.fig1analysisCellCharic.Done/';
 %	prepath='/Volumes/BS Office/Dropbox (HMS)/BernardoGilShare/(1)PFcircuitPaper/fig2analysisCellCharic/';
 
 	% column order assumptions
-	% 'Date' 'Animal' 'CellN' 'Epoch' 'EpochEnd' 'SweepStart' 'SweepEnd' 'ML' 'DV' 'Injection ' 'Notes'
+	% old % 'Date' 'Animal' 'CellN' 'Epoch' 'EpochEnd' 'SweepStart' 'SweepEnd' 'ML' 'DV' 'Injection ' 'Notes'
+	% new % 'Date' 'Animal' 'CellN' 'Rin' 'Cm' 'Epoch' 'EpochEnd'
+	%	'SweepStart' 'SweepEnd' 'ML' 'DV' 'amp' 'Injection ' 'Notes'
+	%	'currentpulses' 'currentpulseID'
+	
 
 %% nested function to return a subrange of the data 
     function rang=SR(startS, endS)
@@ -53,7 +57,7 @@ function [ output_args ] = ipRunAnalysis_v2( cellList )
         if isnumeric(s) 
             ns=s;
         elseif ischar(s)
-        si=strfind(s, '_');
+			si=strfind(s, '_');
             if isempty(si)
                 ns=str2double(s);
             else
@@ -100,17 +104,21 @@ for cellCounter=cellList
 	end
     
     %% initialize the data object
-    newCell.allAvgData=[];
 	newCell.mouseID=ipTableRaw{rowCounter,2};
 	newCell.cellID=num2str(ipTableRaw{rowCounter,3});
-	newCell.pulseID=ipTableRaw{rowCounter,13};
+	newCell.breakInRin=num2str(ipTableRaw{rowCounter,4});
+	newCell.breakInCm=num2str(ipTableRaw{rowCounter,5});
+	
+	newCell.pulseID=ipTableRaw{rowCounter,14};
 	newCell.pulseList=pulseList.(['p' num2str(newCell.pulseID)]);
 	newCell.QC=1; % assume passes QC
 	newCell.acqRate=0;
 	newCell.ML=ipTableRaw{rowCounter,8};
 	newCell.DV=ipTableRaw{rowCounter,9};
-	newCell.injection=ipTableRaw{rowCounter,10};
-	newCell.notes=ipTableRaw{rowCounter,11};
+	newCell.DV=ipTableRaw{rowCounter,9};
+	newCell.holdingCurrent=ipTableRaw{rowCounter,10};	
+	newCell.injection=ipTableRaw{rowCounter,11};
+	newCell.notes=ipTableRaw{rowCounter,12};
 	
 	newCell.acq=cell(1,nAcq); % store the full object for that acq sweep
     
@@ -119,16 +127,14 @@ for cellCounter=cellList
     newCell.cyclePosition=nan(1, nAcq);
     newCell.pulsePattern=nan(1, nAcq);
     newCell.extraGain=nan(1, nAcq);
-
-    newCell.storedVm=nan(1, nAcq);
-    newCell.storedIm=nan(1, nAcq);
-    newCell.storedRm=nan(1, nAcq);
     
    	newCell.traceQC=ones(1, nAcq);
 
 	newCell.VrestMode=nan(1, nAcq);
     newCell.VrestMean=nan(1, nAcq);
-	newCell.noise=nan(1, nAcq);
+    newCell.VrestMax=nan(1, nAcq);
+    newCell.VrestMin=nan(1, nAcq);
+	newCell.VrestSD=nan(1, nAcq);
 
 	newCell.stepCm=nan(1, nAcq);
     newCell.stepTau=nan(1, nAcq);
@@ -177,10 +183,6 @@ for cellCounter=cellList
 		end
 				
 		if ~keepOnlyFirst || (keepOnlyFirst && first)
-			newCell.storedVm(sCounter)=headerValue('state.phys.cellParams.vm0', 1);
-			newCell.storedIm(sCounter)=headerValue('state.phys.cellParams.im0', 1);
-			newCell.storedRm(sCounter)=headerValue('state.phys.cellParams.rm0', 1);
-
 			acqData=a.(['AD0_' num2str(acqNum)]).data;
 			if sCounter==1 % assume that the DAC sample rate doesn't change.
 				acqRate=headerValue('state.phys.settings.inputRate', 1)/1000; % points per ms
@@ -189,11 +191,14 @@ for cellCounter=cellList
 				acqLen=length(acqData)/acqRate;
 			end
 
-			newCell.VrestMode(sCounter)=mode(round(SR(checkPulseEnd+100, pulseStart-10)));
-			newCell.VrestMean(sCounter)=mean(SR(checkPulseEnd+100, pulseStart-10));
 
-			notPulse=[SR(1, checkPulseStart-1) SR(checkPulseEnd+20, pulseStart-10) SR(pulseEnd+100, 2999)];
-			newCell.noise(sCounter)=std(notPulse);
+			notPulse=[SR(1, checkPulseStart-10) SR(checkPulseEnd+100, pulseStart-10)]; % SR(pulseEnd+100, 2999)];
+			newCell.VrestMode(sCounter)=mode(round(notPulse));
+			newCell.VrestMean(sCounter)=mean(notPulse);
+			newCell.VrestSD(sCounter)=std(notPulse);
+			newCell.VrestMin(sCounter)=min(notPulse);
+			newCell.VrestMax(sCounter)=max(notPulse);
+
 
 			[newCell.stepTau(sCounter), ...
 				newCell.stepRmE(sCounter), ...
@@ -218,7 +223,9 @@ for cellCounter=cellList
 
 	newCell.traceQC=...
 		within(newCell.VrestMean, loV, hiV) & ...
-		within(newCell.stepRmE, loR, hiR)...
+		within(newCell.stepRmE, loR, hiR) & ...
+		within(newCell.VrestMax-newCell.VrestMin, 0, 5) & ...
+		within(newCell.VrestSD, 0, 2)...
 		;
 	
 %% plot of the traces that survive QC
@@ -265,11 +272,12 @@ for cellCounter=cellList
 		newCell.avgData=avgData;
 		newCell.avgVrestMean=mean(newCell.avgData([checkPulseEnd+100:pulseStart-10]*acqRate));
 
+		acqData=avgData;	
 		[newCell.avgStepTau, ...
 			newCell.avgStepRmE, ...
 			newCell.avgStepRmF, ...
 			newCell.avgStepCm] = ...
-			ipAnalyzeRC(newCell.avgData([checkPulseStart:checkPulseEnd]*acqRate)-newCell.avgVrestMean, ...
+			ipAnalyzeRC(SR(checkPulseStart,checkPulseEnd)-newCell.avgVrestMean, ...
 			checkPulseSize, acqRate);
 	else
 		newCell.avgVrestMean=nan;
@@ -321,7 +329,7 @@ for cellCounter=cellList
 					-newCell.VrestMean(sCounter);
 			end
 		end
-
+		
 		newCell.pulseAPData{sCounter}=ipAnalyzeAP(SR(pulseStart, pulseEnd), acqRate);
 		if isempty(newCell.pulseAPData{sCounter})
 			newCell.pulseAP(sCounter)=0;
@@ -336,10 +344,11 @@ for cellCounter=cellList
 			end
 			
 			if isnan(firstAPwidth)
+				firstAPpeak=newCell.pulseAPData{sCounter}.AP_peak_V(1);
 				firstAPwidth=newCell.pulseAPData{sCounter}.AP_HW(1);
-				firstAPthresh=newCell.pulseAPData{sCounter}.AP_thresh(1);
-				firstAPdvdt=newCell.pulseAPData{sCounter}.AP_maxRiseRate(1);
-				firstAPAHP=newCell.pulseAPData{sCounter}.AP_AHP(1);
+				firstAPthresh=newCell.pulseAPData{sCounter}.AP_thresh_V(1);
+				firstAPdvdt=newCell.pulseAPData{sCounter}.AP_max_dVdT(1);
+				firstAPAHP=newCell.pulseAPData{sCounter}.AP_AHP_V(1);
 			end
 		end
 		
@@ -393,7 +402,7 @@ for cellCounter=cellList
 	if newCell.QC
 		ipAllCells{cellCounter,17}=newCell.sagV;
 		ipAllCells{cellCounter,18}=newCell.reboundV;
-		ipAllCells{cellCounter,19}=newCell.noise;
+		ipAllCells{cellCounter,19}=newCell.VrestSD;
 		ipAllCells{cellCounter,20}=newCell.pulseI;
 		ipAllCells{cellCounter,21}=newCell.pulseV;
 		ipAllCells{cellCounter,22}=newCell.pulseAP;
